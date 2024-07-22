@@ -10,23 +10,37 @@ app.use(bodyParser.json());
 app.use(cors());
 const { authKey } = require('./secretKeys.js');
 
+
+const { Configuration, OpenAIApi } = require('openai');
+
+const configuration = new Configuration({
+  apiKey: process.env.authKey,
+});
+
+const openai = new OpenAIApi(configuration);
+
+async function runCompletion() {
+  const response = await openai.createCompletion({
+    model: 'text-davinci-003',
+    prompt: 'Hello, world!',
+    max_tokens: 5,
+  });
+
+  console.log(response.data.choices[0].text);
+}
+
+runCompletion();
+
+
+
 app.post('/chat', async (req, res) => {
   const userInput = req.body.text;
   console.log(`User input: ${userInput}`);
 
   try {
-    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: userInput }]
-    }, {
-      headers: {
-        'Authorization': authKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const botResponse = response.data.choices[0].message.content;
-    console.log(`Text Response: ${botResponse}`);
+  
+    const botResponse = await talkToAssistant(userInput) 
+    console.log(`Assistant Response: ${botResponse}`);
 
     const speechResponse = await axios.post('https://api.openai.com/v1/audio/speech', {
       model: "tts-1",
@@ -68,3 +82,59 @@ app.post('/chat', async (req, res) => {
 app.listen(port, () => { 
   console.log(`Server running at http://localhost:${port}/`);
 });
+
+
+// Function to send user input to the assistant and receive the response
+async function talkToAssistant(userInput) {
+  try {
+    const assistantId = 'asst_yQfJncVuJQg3PL40dO7Awyxu'; // Replace with your unique assistant ID
+
+    // Step 1: Create a new thread
+    const assistant = await openai.beta.assistants.create({
+      name: "Math Tutor",
+      instructions: "You are a personal math tutor. Write and run code to answer math questions.",
+      tools: [{ type: "code_interpreter" }],
+      model: "gpt-4o"
+    });
+
+    const res
+
+    // Step 2: Add user message to the thread
+    await axios.post(`https://api.openai.com/v1/assistants/threads/${threadId}/messages`, {
+      role: 'user',
+      content: userInput
+    }, {
+      headers: {
+        'Authorization': authKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Step 3: Create a run on the thread using the assistant ID
+    const runResponse = await axios.post(`https://api.openai.com/v1/assistants/threads/${threadId}/runs`, {
+      assistant_id: assistantId
+    }, {
+      headers: {
+        'Authorization': authKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Step 4: Get the response from the assistant
+    const messagesResponse = await axios.get(`https://api.openai.com/v1/assistants/threads/${threadId}/messages`, {
+      headers: {
+        'Authorization': authKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const assistantResponse = messagesResponse.data.messages.find(msg => msg.role === 'assistant').content;
+    console.log('Assistant:', assistantResponse);
+
+    return assistantResponse;
+
+  } catch (error) {
+    console.error('Error communicating with the assistant:', error);
+    throw error;
+  }
+}
