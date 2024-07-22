@@ -1,36 +1,63 @@
+require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const axios = require('axios');
+const fs = require('fs').promises; // Corrected import
+const path = require('path');
+const OpenAIApi = require('openai');
+const openai = new OpenAIApi({ apiKey: process.env.OPENAI_API_KEY });
+const bodyParser = require('body-parser');
 const cors = require('cors');
-const fs = require('fs').promises; // Use fs.promises for async/await
-const path = require('path'); // Require the path module
 const app = express();
 const port = 3000;
 app.use(bodyParser.json());
 app.use(cors());
-const { authKey } = require('./secretKeys.js');
 
 
-const { Configuration, OpenAIApi } = require('openai');
 
-const configuration = new Configuration({
-  apiKey: process.env.authKey,
-});
+async function theMind(userInput) {
+  try {
+    const thread = await openai.beta.threads.create();
+    const message = await openai.beta.threads.messages.create(
+      thread.id,
+      {
+        role: "user",
+        content: userInput
+      }
+    );
+    let run = await openai.beta.threads.runs.createAndPoll(
+      thread.id,
+      { 
+        assistant_id: 'asst_yQfJncVuJQg3PL40dO7Awyxu',
+      }
+    );
 
-const openai = new OpenAIApi(configuration);
-
-async function runCompletion() {
-  const response = await openai.createCompletion({
-    model: 'text-davinci-003',
-    prompt: 'Hello, world!',
-    max_tokens: 5,
-  });
-
-  console.log(response.data.choices[0].text);
+    if (run.status === 'completed') {
+      const messages = await openai.beta.threads.messages.list(
+        run.thread_id
+      );
+      console.log(messages.data[0].content[0].text.value)
+      return(messages.data[0].content[0].text.value)
+    } else {
+      console.log(run.status);
+    }
+  } catch (error) {
+    console.error('Error in theMind function:', error.message);
+    throw error;
+  }
 }
 
-runCompletion();
 
+
+async function vocalCords(botResponse){
+  const mp3 = await openai.audio.speech.create({
+    model: "tts-1",
+    voice: "alloy",
+    input: botResponse,
+  });
+  const buffer = Buffer.from(await mp3.arrayBuffer());
+    await fs.writeFile('audio/speechFile.mp3', buffer);
+  console.log('File written successfully');
+}
 
 
 app.post('/chat', async (req, res) => {
@@ -39,32 +66,11 @@ app.post('/chat', async (req, res) => {
 
   try {
   
-    const botResponse = await talkToAssistant(userInput) 
+    const botResponse = await theMind(userInput) 
     console.log(`Assistant Response: ${botResponse}`);
-
-    const speechResponse = await axios.post('https://api.openai.com/v1/audio/speech', {
-      model: "tts-1",
-      input: botResponse,
-      voice: "onyx"
-    }, {
-      headers: {
-        'Authorization': authKey,
-        'Content-Type': 'application/json'
-      },
-      responseType: 'arraybuffer'
-    });
-
-    let filename = path.join(__dirname, 'audio', 'output.mp3');
-    console.log(`Writing file to ${filename}`);
-    await fs.writeFile(filename, Buffer.from(speechResponse.data)); // Use async writeFile
-    console.log('File written successfully');
-
-    // Ensure the file is written before sending it
-    await fs.access(filename);
-    console.log('File exists, sending to client');
-
-    // Send the file back to the client
-    res.download(filename, 'output.mp3', (err) => {
+    await vocalCords(botResponse)
+    let filename = path.join(__dirname, 'audio', 'speechFile.mp3');
+    res.download(filename, 'speechFile.mp3', (err) => {
       if (err) {
         console.error('Error sending file:', err);
         res.status(500).json({ error: 'Error sending file', details: err.message });
@@ -80,61 +86,7 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(port, () => { 
+  console.log(process.env.OPENAI_API_KEY)
   console.log(`Server running at http://localhost:${port}/`);
 });
 
-
-// Function to send user input to the assistant and receive the response
-async function talkToAssistant(userInput) {
-  try {
-    const assistantId = 'asst_yQfJncVuJQg3PL40dO7Awyxu'; // Replace with your unique assistant ID
-
-    // Step 1: Create a new thread
-    const assistant = await openai.beta.assistants.create({
-      name: "Math Tutor",
-      instructions: "You are a personal math tutor. Write and run code to answer math questions.",
-      tools: [{ type: "code_interpreter" }],
-      model: "gpt-4o"
-    });
-
-    const res
-
-    // Step 2: Add user message to the thread
-    await axios.post(`https://api.openai.com/v1/assistants/threads/${threadId}/messages`, {
-      role: 'user',
-      content: userInput
-    }, {
-      headers: {
-        'Authorization': authKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    // Step 3: Create a run on the thread using the assistant ID
-    const runResponse = await axios.post(`https://api.openai.com/v1/assistants/threads/${threadId}/runs`, {
-      assistant_id: assistantId
-    }, {
-      headers: {
-        'Authorization': authKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    // Step 4: Get the response from the assistant
-    const messagesResponse = await axios.get(`https://api.openai.com/v1/assistants/threads/${threadId}/messages`, {
-      headers: {
-        'Authorization': authKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const assistantResponse = messagesResponse.data.messages.find(msg => msg.role === 'assistant').content;
-    console.log('Assistant:', assistantResponse);
-
-    return assistantResponse;
-
-  } catch (error) {
-    console.error('Error communicating with the assistant:', error);
-    throw error;
-  }
-}
