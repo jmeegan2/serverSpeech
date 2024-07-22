@@ -74,7 +74,7 @@ async function saveContextToFile() {
   }
 }
 
-async function nonAssistant(userInput) {
+async function modelWithMemory(userInput) {
   if (!contextLoaded) await loadContextFromFile();
 
   const systemMessages = [
@@ -116,7 +116,7 @@ app.post('/chat', async (req, res) => {
   console.log(`User input: ${userInput}`);
 
   try {
-    const botResponse = await nonAssistant(userInput);
+    const botResponse = await modelWithMemory(userInput);
     console.log(`botResponse: ${botResponse}`);
     await vocalCords(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');
