@@ -62,9 +62,9 @@ async function loadContextFromFile() {
   }
 }
 
-function saveContextToFile() {
+async function saveContextToFile() {
   try {
-    fs.writeFile(path.join(__dirname, 'context.json'), JSON.stringify(context, null, 2));
+    await fs.writeFile(path.join(__dirname, 'context.json'), JSON.stringify(context, null, 2));
     console.log('Context saved to file.');
   } catch (error) {
     console.error('Error saving context to file:', error);
@@ -73,7 +73,6 @@ function saveContextToFile() {
 
 async function customMemoryModel(userInput) {
   if (!contextLoaded) await loadContextFromFile();
-
 
   const systemMessages = [
     { role: "system", content: `Context: ${JSON.stringify(context)}` },
@@ -89,7 +88,8 @@ async function customMemoryModel(userInput) {
   context.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
   idCounter++;
 
-  saveContextToFile();
+  // Call saveContextToFile asynchronously without awaiting
+  saveContextToFile().catch(console.error);
 
   return completion.choices[0].message.content;
 }
