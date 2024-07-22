@@ -21,7 +21,7 @@ let idCounter = 0;
 app.use(bodyParser.json());
 app.use(cors());
 
-async function assistant(userInput) {
+async function assistantModel(userInput) {
   try {
     const thread = await openai.beta.threads.create();
     await openai.beta.threads.messages.create(thread.id, {
@@ -48,24 +48,21 @@ async function assistant(userInput) {
 async function loadContextFromFile() {
   try {
     const data = await fs.readFile(path.join(__dirname, 'context.json'), 'utf8');
-    if (data) {
-      context = JSON.parse(data);
-      idCounter = context.userInput.length; // Update idCounter based on the context length
-      console.log('Context loaded from file.');
-    } else {
-      console.log('Context file is empty, starting with an empty context.');
-    }
+    context = data ? JSON.parse(data) : { userInput: [], modelResponse: [] };
+    idCounter = context.userInput.length;
     contextLoaded = true;
+    console.log('Context loaded from file.');
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      console.log('Context file not found, starting with an empty context.');
-    } else {
+    if (error.code !== 'ENOENT') {
       console.error('Error loading context from file:', error);
     }
+    context = { userInput: [], modelResponse: [] };
+    idCounter = 0;
+    console.log('Context file not found, starting with an empty context.');
   }
 }
 
-async function saveContextToFile() {
+function saveContextToFile() {
   try {
     fs.writeFile(path.join(__dirname, 'context.json'), JSON.stringify(context, null, 2));
     console.log('Context saved to file.');
@@ -74,30 +71,27 @@ async function saveContextToFile() {
   }
 }
 
-async function modelWithMemory(userInput) {
+async function customMemoryModel(userInput) {
   if (!contextLoaded) await loadContextFromFile();
+
 
   const systemMessages = [
     { role: "system", content: `Context: ${JSON.stringify(context)}` },
-    {
-      role: "system",
-      content: "You are Tyler Durden. Just be yourself.",
-    },
+    { role: "system", content: "You are Tyler Durden. Just be yourself." },
   ];
-  const userMessage = { role: "user", content: userInput };
 
   const completion = await openai.chat.completions.create({
-    messages: [...systemMessages, userMessage],
+    messages: [...systemMessages, { role: "user", content: userInput }],
     model: "gpt-4o",
   });
 
-  const modelResponse = completion.choices[0].message.content;
   context.userInput.push({ value: userInput, id: idCounter });
-  context.modelResponse.push({ value: modelResponse, id: idCounter });
+  context.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
   idCounter++;
+
   saveContextToFile();
 
-  return modelResponse;
+  return completion.choices[0].message.content;
 }
 
 async function vocalCords(botResponse) {
@@ -116,7 +110,7 @@ app.post('/chat', async (req, res) => {
   console.log(`User input: ${userInput}`);
 
   try {
-    const botResponse = await modelWithMemory(userInput);
+    const botResponse = await customMemoryModel(userInput);
     console.log(`botResponse: ${botResponse}`);
     await vocalCords(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');

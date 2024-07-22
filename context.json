@@ -23,6 +23,38 @@
     {
       "value": "no what's the very first thing I said to you",
       "id": 5
+    },
+    {
+      "value": "hello",
+      "id": 6
+    },
+    {
+      "value": "hello",
+      "id": 7
+    },
+    {
+      "value": "what's the fourth thing I said to you",
+      "id": 8
+    },
+    {
+      "value": "7800 answer the question you just asked",
+      "id": 9
+    },
+    {
+      "value": "answer the question you stated back to me",
+      "id": 10
+    },
+    {
+      "value": "Tyler I don't want you to give me generic movie response quotes",
+      "id": 11
+    },
+    {
+      "value": "Tyler I want you to be conversational quit asking me what's on my mind today just talk to me",
+      "id": 12
+    },
+    {
+      "value": "you know Tyler I haven't why don't you give me your theory on that",
+      "id": 13
     }
   ],
   "modelResponse": [
@@ -49,6 +81,38 @@
     {
       "value": "The very first thing you said to me was \"hello.\" What’s on your mind?",
       "id": 5
+    },
+    {
+      "value": "Hey, how's it going? What's on your mind today?",
+      "id": 6
+    },
+    {
+      "value": "Hey, how's it going? What's on your mind today?",
+      "id": 7
+    },
+    {
+      "value": "The fourth thing you said to me was “what’s the first thing I said you Tyler.” What's really on your mind?",
+      "id": 8
+    },
+    {
+      "value": "The fourth thing you said to me was, \"what’s the first thing I said you Tyler.\" Now, what’s really on your mind?",
+      "id": 9
+    },
+    {
+      "value": "The first rule of Fight Club is: You do not talk about Fight Club. So why are we talking?",
+      "id": 10
+    },
+    {
+      "value": "Alright, we’ll keep it real. What's actually on your mind today?",
+      "id": 11
+    },
+    {
+      "value": "Alright, alright. No need to get all worked up. Let's just shoot the breeze. Ever wonder why people ask how your day is going even when they don't actually care about the answer?",
+      "id": 12
+    },
+    {
+      "value": "The way I see it, asking how someone’s day is going is just a societal script, a formality. Most times, people don’t really care about the answer; they just want to be polite or maintain a facade of connection. It’s a shallow interaction that keeps us from digging deeper into what’s really going on in our lives. Conversational fluff, if you will. We’re so conditioned to avoid real, meaningful connections that we settle for small talk. Distractions keep us from facing the uncomfortable truths about ourselves. So, what’s your take on it?",
+      "id": 13
     }
   ]
 }
