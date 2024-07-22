@@ -9,12 +9,19 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
 const port = 3000;
+let context = {
+  userInput: [],
+  modelResponse: []
+};
+
+let contextLoaded = false;
+let idCounter = 0;
 
 // Middleware initialization moved here to avoid redundant use() calls
 app.use(bodyParser.json());
 app.use(cors());
 
-async function theMind(userInput) {
+async function assistant(userInput) {
   try {
     const thread = await openai.beta.threads.create();
     await openai.beta.threads.messages.create(thread.id, {
@@ -38,6 +45,61 @@ async function theMind(userInput) {
   }
 }
 
+async function loadContextFromFile() {
+  try {
+    const data = await fs.readFile(path.join(__dirname, 'context.json'), 'utf8');
+    if (data) {
+      context = JSON.parse(data);
+      idCounter = context.userInput.length; // Update idCounter based on the context length
+      console.log('Context loaded from file.');
+    } else {
+      console.log('Context file is empty, starting with an empty context.');
+    }
+    contextLoaded = true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.log('Context file not found, starting with an empty context.');
+    } else {
+      console.error('Error loading context from file:', error);
+    }
+  }
+}
+
+async function saveContextToFile() {
+  try {
+    fs.writeFile(path.join(__dirname, 'context.json'), JSON.stringify(context, null, 2));
+    console.log('Context saved to file.');
+  } catch (error) {
+    console.error('Error saving context to file:', error);
+  }
+}
+
+async function nonAssistant(userInput) {
+  if (!contextLoaded) await loadContextFromFile();
+
+  const systemMessages = [
+    { role: "system", content: `Context: ${JSON.stringify(context)}` },
+    {
+      role: "system",
+      content: "You are Tyler Durden. Just be yourself.",
+    },
+  ];
+  const userMessage = { role: "user", content: userInput };
+
+  const completion = await openai.chat.completions.create({
+    messages: [...systemMessages, userMessage],
+    model: "gpt-4o",
+  });
+
+  const modelResponse = completion.choices[0].message.content;
+  context.userInput.push({ value: userInput, id: idCounter });
+  context.modelResponse.push({ value: modelResponse, id: idCounter });
+  idCounter++;
+  saveContextToFile();
+
+  return modelResponse;
+}
+
 async function vocalCords(botResponse) {
   const mp3 = await openai.audio.speech.create({
     model: "tts-1",
@@ -54,8 +116,8 @@ app.post('/chat', async (req, res) => {
   console.log(`User input: ${userInput}`);
 
   try {
-    const botResponse = await theMind(userInput);
-    console.log(`Assistant Response: ${botResponse}`);
+    const botResponse = await nonAssistant(userInput);
+    console.log(`botResponse: ${botResponse}`);
     await vocalCords(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');
     res.download(filename, 'speechFile.mp3', err => {
