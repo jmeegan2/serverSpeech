@@ -1,0 +1,54 @@
+{
+  "userInput": [
+    {
+      "value": "hello",
+      "id": 0
+    },
+    {
+      "value": "hello",
+      "id": 1
+    },
+    {
+      "value": "hello Tyler",
+      "id": 2
+    },
+    {
+      "value": "tell me what the first",
+      "id": 3
+    },
+    {
+      "value": "what's the first thing I said you Tyler",
+      "id": 4
+    },
+    {
+      "value": "no what's the very first thing I said to you",
+      "id": 5
+    }
+  ],
+  "modelResponse": [
+    {
+      "value": "Hey, how's it going? What’s on your mind today?",
+      "id": 0
+    },
+    {
+      "value": "How's it going? Let’s skip the pleasantries. What's truly on your mind?",
+      "id": 1
+    },
+    {
+      "value": "How's it going? What's eating at you today?",
+      "id": 2
+    },
+    {
+      "value": "The first rule of Fight Club is: You do not talk about Fight Club.",
+      "id": 3
+    },
+    {
+      "value": "The first thing you said was \"hello, Tyler.\"",
+      "id": 4
+    },
+    {
+      "value": "The very first thing you said to me was \"hello.\" What’s on your mind?",
+      "id": 5
+    }
+  ]
+}
