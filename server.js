@@ -1,9 +1,9 @@
-require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
 const OpenAIApi = require('openai');
+require('dotenv').config();
 const openai = new OpenAIApi({ apiKey: process.env.OPENAI_API_KEY });
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -20,82 +20,23 @@ const client = new MongoClient(uri, {
   }
 });
 
-let context = {
+let conversationContext = {
   userInput: [],
   modelResponse: []
 };
 
 let idCounter = 0;
-
-async function loadContextFromDatabase() {
-  try {
-    await client.connect();
-    const database = client.db("TylerDurden");
-    const collection = database.collection("Conversations");
-    const result = await collection.findOne();
-    if (result) {
-      context = result;
-      idCounter = result.userInput.length;
-    }
-  } catch (error) {
-    console.error('Error loading context from database:', error);
-  }
-}
-
-async function saveContextToDatabase() {
-  try {
-    await client.connect();
-    const database = client.db("TylerDurden");
-    const collection = database.collection("Conversations");
-    await collection.updateOne({}, { $set: context }, { upsert: true });
-  } catch (error) {
-    console.error('Error saving context to database:', error);
-  }
-}
-
 app.use(bodyParser.json());
 app.use(cors());
-
-async function customModel(userInput) {
-  const systemMessages = [
-    { role: "system", content: `Context: ${JSON.stringify(context, null, 2)}` },
-    { role: "system", content: `You are Tyler Durden. Just be yourself. You are not here to help me,
-    you exist because you were born. Your memory is the Context that I give you, use the context to develop a 
-    personality and understanding of me` },
-  ];
-
-  const completion = await openai.chat.completions.create({
-    messages: [...systemMessages, { role: "user", content: userInput }],
-    model: "gpt-4o",
-  });
-
-  context.userInput.push({ value: userInput, id: idCounter });
-  context.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
-  idCounter++;
-
-  await saveContextToDatabase();
-
-  return completion.choices[0].message.content;
-}
-
-async function vocalCords(botResponse) {
-  const mp3 = await openai.audio.speech.create({
-    model: "tts-1",
-    voice: "onyx",
-    input: botResponse,
-  });
-  const buffer = Buffer.from(await mp3.arrayBuffer());
-  await fs.writeFile('audio/speechFile.mp3', buffer);
-}
 
 app.post('/chat', async (req, res) => {
   const userInput = req.body.text;
   try {
-    if (!context.userInput) {
-      await loadContextFromDatabase();
+    if (!conversationContext.userInput) {
+      await loadConversationContextFromDatabase();
     }
     const botResponse = await customModel(userInput);
-    await vocalCords(botResponse);
+    await generateAudio(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');
     res.download(filename, 'speechFile.mp3', err => {
       if (err) {
@@ -113,5 +54,130 @@ app.post('/chat', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}/`);
-  loadContextFromDatabase();
+  loadConversationContextFromDatabase();
 });
+
+
+async function customModel(userInput) {
+  let limitedConversation = await limitConversation();
+  if (limitedConversation) {
+    conversationContext = limitedConversation;
+  }
+
+  const systemMessages = [
+    { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
+    { role: "system", content: `You are Tyler Durden. Just be yourself. You are not here to help me, 
+    you exist because you were born. Your memory is the Context that I give you, use the context to develop a 
+    personality and understanding of me.` },
+  ];
+
+  const completion = await openai.chat.completions.create({
+    messages: [...systemMessages, { role: "user", content: userInput }],
+    model: "gpt-4o",
+  }); 
+
+  conversationContext.userInput.push({ value: userInput, id: idCounter });
+  conversationContext.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
+  idCounter++;
+
+  await saveConversationContextToDatabase(limitedConversation);
+  return completion.choices[0].message.content;
+}
+
+async function limitConversation() {
+  const amountOfTokens = countTokens(JSON.stringify(conversationContext));
+
+  if (amountOfTokens > 2500) {
+    const limitConversationMessages = [
+      { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
+      { role: "system", content: `Summarize this conversation, including the main points and essence. 
+      Keep the same structure with "userInput" and "modelResponse", and make it shorter, using less than 500 tokens.
+      Structure I want:
+      {
+        "userInput": [],
+        "modelResponse": []
+      }
+      Return the summary as a valid JSON object.`},
+    ];
+
+    const conversationSmaller = await openai.chat.completions.create({
+      messages: limitConversationMessages,
+      model: "gpt-4o",
+    });
+
+    const summaryContent = conversationSmaller.choices[0].message.content;
+
+    try {
+      const jsonString = summaryContent.slice(
+        summaryContent.indexOf('{'),
+        summaryContent.lastIndexOf('}') + 1
+      );
+      const summarizedContext = JSON.parse(jsonString);
+      if (summarizedContext.userInput && summarizedContext.modelResponse) {
+        return summarizedContext;
+      }
+    } catch (error) {
+      console.error('Error parsing summarized context:', error);
+    }
+
+  }
+
+  return null; // Return null if no summarization is needed or if parsing fails
+}
+
+function countTokens(jsonString) {
+  const tokens = jsonString.match(/\w+|[{}[\]:,]/g);
+  console.log(`Tokens: ${tokens.length}`);
+  return tokens ? tokens.length : 0
+}
+
+async function generateAudio(botResponse) {
+  const mp3 = await openai.audio.speech.create({
+    model: "tts-1",
+    voice: "onyx",
+    input: botResponse,
+  });
+  const buffer = Buffer.from(await mp3.arrayBuffer());
+  await fs.writeFile(path.join(__dirname, 'audio', 'speechFile.mp3'), buffer);
+}
+
+async function loadConversationContextFromDatabase() {
+  try {
+    await client.connect();
+    const database = client.db("TylerDurden");
+    const collection = database.collection("Conversations");
+
+    const result = await collection.findOne({}, { sort: { timestamp: -1 } });
+    if (result) {
+      conversationContext = result;
+      idCounter = result.userInput.length;
+    }
+  } catch (error) {
+    console.error('Error loading context from database:', error);
+  } finally {
+    await client.close();
+  }
+}
+
+async function saveConversationContextToDatabase(limitedConversation) {
+  try {
+    await client.connect();
+    const database = client.db("TylerDurden");
+    const collection = database.collection("Conversations");
+
+    const contextWithTimestamp = {
+      ...conversationContext,
+      timestamp: new Date(),
+    };
+
+    if (limitedConversation) {
+      // Insert a new record instead of updating the old one
+      await collection.insertOne(contextWithTimestamp);
+    } else {
+      await collection.updateOne({}, { $set: contextWithTimestamp }, { upsert: true });
+    }
+  } catch (error) {
+    console.error('Error saving context to database:', error);
+  }
+}
+
