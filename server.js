@@ -24,10 +24,15 @@ let conversationContext = {
   userInput: [],
   modelResponse: []
 };
-
 let idCounter = 0;
+
 app.use(bodyParser.json());
 app.use(cors());
+
+
+/*
+  Routes
+*/
 
 app.post('/chat', async (req, res) => {
   const userInput = req.body.text;
@@ -35,7 +40,7 @@ app.post('/chat', async (req, res) => {
     if (!conversationContext.userInput) {
       await loadConversationContextFromDatabase();
     }
-    const botResponse = await customModel(userInput);
+    const botResponse = await processUserInput(userInput);
     await generateAudio(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');
     res.download(filename, 'speechFile.mp3', err => {
@@ -52,14 +57,13 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}/`);
-  loadConversationContextFromDatabase();
-});
 
+/*
+  Main functions
+*/
 
-async function customModel(userInput) {
-  let limitedConversation = await limitConversation();
+async function processUserInput(userInput) {
+  let limitedConversation = await summarizeForCostSaving();
   if (limitedConversation) {
     conversationContext = limitedConversation;
   }
@@ -84,7 +88,7 @@ async function customModel(userInput) {
   return completion.choices[0].message.content;
 }
 
-async function limitConversation() {
+async function summarizeForCostSaving() {
   const amountOfTokens = countTokens(JSON.stringify(conversationContext));
 
   if (amountOfTokens > 2500) {
@@ -125,6 +129,11 @@ async function limitConversation() {
   return null; // Return null if no summarization is needed or if parsing fails
 }
 
+
+/*
+  Helper functions
+*/
+
 function countTokens(jsonString) {
   const tokens = jsonString.match(/\w+|[{}[\]:,]/g);
   console.log(`Tokens: ${tokens.length}`);
@@ -141,6 +150,11 @@ async function generateAudio(botResponse) {
   await fs.writeFile(path.join(__dirname, 'audio', 'speechFile.mp3'), buffer);
 }
 
+
+/*
+  MongoDB data 
+*/
+
 async function loadConversationContextFromDatabase() {
   try {
     await client.connect();
@@ -151,7 +165,7 @@ async function loadConversationContextFromDatabase() {
     if (result) {
       conversationContext = result;
       idCounter = result.userInput.length;
-    }
+        }
   } catch (error) {
     console.error('Error loading context from database:', error);
   } finally {
@@ -181,3 +195,9 @@ async function saveConversationContextToDatabase(limitedConversation) {
   }
 }
 
+
+
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}/`);
+  loadConversationContextFromDatabase();
+});
