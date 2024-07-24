@@ -25,7 +25,9 @@ let conversationContext = {
   modelResponse: []
 };
 let idCounter = 0;
-
+let summarizeNextCall = false;
+let limitedConversation = null;
+const warningMessageForTokenLimit = "Heads up: Token limit hit. Next response might drag 'cause we need to cut costs.";
 app.use(bodyParser.json());
 app.use(cors());
 
@@ -37,9 +39,6 @@ app.use(cors());
 app.post('/chat', async (req, res) => {
   const userInput = req.body.text;
   try {
-    if (!conversationContext.userInput) {
-      await loadConversationContextFromDatabase();
-    }
     const botResponse = await processUserInput(userInput);
     await generateAudio(botResponse);
     const filename = path.join(__dirname, 'audio', 'speechFile.mp3');
@@ -63,10 +62,8 @@ app.post('/chat', async (req, res) => {
 */
 
 async function processUserInput(userInput) {
-  let limitedConversation = await summarizeForCostSaving();
-  if (limitedConversation) {
-    conversationContext = limitedConversation;
-  }
+  
+  await checkAndHandleSummarization()
 
   const systemMessages = [
     { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
@@ -82,14 +79,11 @@ async function processUserInput(userInput) {
   conversationContext.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
   idCounter++;
 
-  await saveConversationContextToDatabase(limitedConversation);
+  await saveConversationContextToDatabase(); 
   return completion.choices[0].message.content;
 }
 
 async function summarizeForCostSaving() {
-  const amountOfTokens = countTokens(JSON.stringify(conversationContext));
-
-  if (amountOfTokens > 2500) {
     const limitConversationMessages = [
       { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
       { role: "system", content: process.env.SUMMARIZE_CONVERSATION_INSTRUCTIONS},
@@ -115,8 +109,6 @@ async function summarizeForCostSaving() {
       console.error('Error parsing summarized context:', error);
     }
 
-  }
-
   return null; // Return null if no summarization is needed or if parsing fails
 }
 
@@ -132,6 +124,9 @@ function countTokens(jsonString) {
 }
 
 async function generateAudio(botResponse) {
+  if(summarizeNextCall) {
+    botResponse = `${botResponse}, ${warningMessageForTokenLimit}`
+  }
   const mp3 = await openai.audio.speech.create({
     model: "tts-1",
     voice: "onyx",
@@ -141,6 +136,21 @@ async function generateAudio(botResponse) {
   await fs.writeFile(path.join(__dirname, 'audio', 'speechFile.mp3'), buffer);
 }
 
+async function checkAndHandleSummarization() {
+  if (summarizeNextCall) {
+    limitedConversation = await summarizeForCostSaving();
+    if (limitedConversation) {
+      conversationContext = limitedConversation;
+    }
+    summarizeNextCall = false;
+    return 
+  }
+  const currentTokenCount = countTokens(JSON.stringify(conversationContext));
+  if (currentTokenCount > process.env.TOKEN_LIMIT) {
+    summarizeNextCall = true;
+    return
+  }
+}
 
 /*
   MongoDB data 
@@ -164,8 +174,10 @@ async function loadConversationContextFromDatabase() {
   }
 }
 
-async function saveConversationContextToDatabase(limitedConversation) {
+async function saveConversationContextToDatabase() {
   try {
+    if(conversationContext === null || undefined) throw new Error('conversationContext is null or undefined');
+
     await client.connect();
     const database = client.db(process.env.DATABASE_NAME);
     const collection = database.collection(process.env.COLLECTION_NAME);
@@ -178,6 +190,7 @@ async function saveConversationContextToDatabase(limitedConversation) {
     if (limitedConversation) {
       // Insert a new record instead of updating the old one
       await collection.insertOne(contextWithTimestamp);
+      limitedConversation = null;
     } else {
       await collection.updateOne({}, { $set: contextWithTimestamp }, { upsert: true });
     }
