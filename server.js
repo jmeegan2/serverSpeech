@@ -62,25 +62,29 @@ app.post('/chat', async (req, res) => {
 */
 
 async function processUserInput(userInput) {
-  
-  await checkAndHandleSummarization()
+  try {
+    await checkAndHandleSummarization();
 
-  const systemMessages = [
-    { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
-    { role: "system", content: process.env.PERSONALITY_PROFILE },
-  ];
+    const systemMessages = [
+      { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
+      { role: "system", content: process.env.PERSONALITY_PROFILE },
+    ];
 
-  const completion = await openai.chat.completions.create({
-    messages: [...systemMessages, { role: "user", content: userInput }],
-    model: "gpt-4o",
-  }); 
+    const completion = await openai.chat.completions.create({
+      messages: [...systemMessages, { role: "user", content: userInput }],
+      model: "gpt-4o",
+    }); 
 
-  conversationContext.userInput.push({ value: userInput, id: idCounter });
-  conversationContext.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
-  idCounter++;
+    conversationContext.userInput.push({ value: userInput, id: idCounter });
+    conversationContext.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
+    idCounter++;
 
-  await saveConversationContextToDatabase(); 
-  return completion.choices[0].message.content;
+    await saveConversationContextToDatabase(); 
+    return completion.choices[0].message.content;
+  } catch (error) {
+    console.error('Error processing user input:', error.message);
+    throw error; // Re-throw error to handle it in the calling function
+  }
 }
 
 async function summarizeForCostSaving() {
@@ -124,31 +128,37 @@ function countTokens(jsonString) {
 }
 
 async function generateAudio(botResponse) {
-  if(summarizeNextCall) {
-    botResponse = `${botResponse}, ${warningMessageForTokenLimit}`
-  }
-  const mp3 = await openai.audio.speech.create({
-    model: "tts-1",
-    voice: "onyx",
-    input: botResponse,
-  });
-  const buffer = Buffer.from(await mp3.arrayBuffer());
-  await fs.writeFile(path.join(__dirname, 'audio', 'speechFile.mp3'), buffer);
-}
-
-async function checkAndHandleSummarization() {
-  if (summarizeNextCall) {
-    limitedConversation = await summarizeForCostSaving();
-    if (limitedConversation) {
-      conversationContext = limitedConversation;
+  try {
+    if (summarizeNextCall) {
+      botResponse = `${botResponse}, ${warningMessageForTokenLimit}`;
     }
-    summarizeNextCall = false;
-    return 
+    const mp3 = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "onyx",
+      input: botResponse,
+    });
+    const buffer = Buffer.from(await mp3.arrayBuffer());
+    await fs.writeFile(path.join(__dirname, 'audio', 'speechFile.mp3'), buffer);
+  } catch (error) {
+    console.error('Error generating audio:', error.message);
   }
-  const currentTokenCount = countTokens(JSON.stringify(conversationContext));
-  if (currentTokenCount > process.env.TOKEN_LIMIT) {
-    summarizeNextCall = true;
-    return
+}
+async function checkAndHandleSummarization() {
+  try {
+    if (summarizeNextCall) {
+      limitedConversation = await summarizeForCostSaving();
+      if (limitedConversation) {
+        conversationContext = limitedConversation;
+      }
+      summarizeNextCall = false; 
+    } else {
+      const currentTokenCount = countTokens(JSON.stringify(conversationContext));
+      if (currentTokenCount > process.env.TOKEN_LIMIT) {
+        summarizeNextCall = true;
+      }
+    }
+  } catch (error) {
+    console.error('Error during summarization check:', error.message);
   }
 }
 
@@ -176,7 +186,9 @@ async function loadConversationContextFromDatabase() {
 
 async function saveConversationContextToDatabase() {
   try {
-    if(conversationContext === null || undefined) throw new Error('conversationContext is null or undefined');
+    if (conversationContext === null || conversationContext === undefined) {
+      throw new Error('conversationContext is null or undefined');
+    }
 
     await client.connect();
     const database = client.db(process.env.DATABASE_NAME);
