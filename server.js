@@ -70,9 +70,7 @@ async function processUserInput(userInput) {
 
   const systemMessages = [
     { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
-    { role: "system", content: `You are Tyler Durden. Just be yourself. You are not here to help me, 
-    you exist because you were born. Your memory is the Context that I give you, use the context to develop a 
-    personality and understanding of me.` },
+    { role: "system", content: process.env.PERSONALITY_PROFILE },
   ];
 
   const completion = await openai.chat.completions.create({
@@ -94,14 +92,7 @@ async function summarizeForCostSaving() {
   if (amountOfTokens > 2500) {
     const limitConversationMessages = [
       { role: "system", content: `Context: ${JSON.stringify(conversationContext)}` },
-      { role: "system", content: `Summarize this conversation, including the main points and essence. 
-      Keep the same structure with "userInput" and "modelResponse", and make it shorter, using less than 500 tokens.
-      Structure I want:
-      {
-        "userInput": [],
-        "modelResponse": []
-      }
-      Return the summary as a valid JSON object.`},
+      { role: "system", content: process.env.SUMMARIZE_CONVERSATION_INSTRUCTIONS},
     ];
 
     const conversationSmaller = await openai.chat.completions.create({
@@ -158,8 +149,8 @@ async function generateAudio(botResponse) {
 async function loadConversationContextFromDatabase() {
   try {
     await client.connect();
-    const database = client.db("TylerDurden");
-    const collection = database.collection("Conversations");
+    const database = client.db(process.env.DATABASE_NAME);
+    const collection = database.collection(process.env.COLLECTION_NAME);
 
     const result = await collection.findOne({}, { sort: { timestamp: -1 } });
     if (result) {
@@ -176,8 +167,8 @@ async function loadConversationContextFromDatabase() {
 async function saveConversationContextToDatabase(limitedConversation) {
   try {
     await client.connect();
-    const database = client.db("TylerDurden");
-    const collection = database.collection("Conversations");
+    const database = client.db(process.env.DATABASE_NAME);
+    const collection = database.collection(process.env.COLLECTION_NAME);
 
     const contextWithTimestamp = {
       ...conversationContext,
