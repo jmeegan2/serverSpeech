@@ -50,6 +50,7 @@ app.post('/chat', async (req, res) => {
         console.log(`File sent successfully, Timestamp: ${new Date().getTime()}`);
       }
     });
+    setImmediate(saveConversationContextToDatabase);
   } catch (error) {
     console.error('Error communicating with OpenAI API:', error.message);
     res.status(500).json({ error: 'Error communicating with OpenAI API', details: error.message });
@@ -79,7 +80,6 @@ async function processUserInput(userInput) {
     conversationContext.modelResponse.push({ value: completion.choices[0].message.content, id: idCounter });
     idCounter++;
 
-    await saveConversationContextToDatabase(); 
     return completion.choices[0].message.content;
   } catch (error) {
     console.error('Error processing user input:', error.message);
