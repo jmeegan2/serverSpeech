@@ -1,3 +1,4 @@
 output.mp3
 secretKeys.js
 .env
+audio/speechFile.mp3
